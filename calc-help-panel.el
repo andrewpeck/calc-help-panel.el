@@ -93,9 +93,12 @@ KEYS is shown on hover; the COMMANDs are called in order on click.")
   "Alist of COMMAND to a predicate, run in the Calc buffer.
 Buttons whose command's predicate is non-nil use the active face.")
 
+(defvar calc-help-panel--calc-buffer nil
+  "The Calc buffer the help panel is attached to.")
+
 (defun calc-help-panel--run (commands)
   "Select the Calc window and call COMMANDS interactively."
-  (let ((win (get-buffer-window "*Calculator*")))
+  (let ((win (get-buffer-window calc-help-panel--calc-buffer)))
     (unless win
       (user-error "Calc window is not visible"))
     (select-window win)
@@ -135,8 +138,8 @@ Buttons whose command's predicate is non-nil use the active face.")
 (defun calc-help-panel--refresh (&rest _)
   "Update button faces to reflect the current Calc modes."
   (let ((help (get-buffer calc-help-panel-buffer-name))
-        (calc (get-buffer "*Calculator*")))
-    (when (and help calc)
+        (calc calc-help-panel--calc-buffer))
+    (when (and help (buffer-live-p calc))
       (with-current-buffer help
         (let ((inhibit-read-only t)
               (pos (point-min))
@@ -149,12 +152,18 @@ Buttons whose command's predicate is non-nil use the active face.")
                             'calc-help-panel-button)))
             (setq pos (button-end button))))))))
 
-(defun calc-help-panel--show ()
-  "Show the help panel to the right of the Calc stack and trail."
+;;;###autoload
+(defun calc-help-panel-show ()
+  "Show the help panel to the right of the current Calc stack and trail."
+  (interactive)
+  (unless (derived-mode-p 'calc-mode)
+    (user-error "Not in a Calc buffer"))
+  (setq calc-help-panel--calc-buffer (current-buffer))
   (unless (get-buffer-window calc-help-panel-buffer-name)
-    (let* ((anchor (if (get-buffer-window (calc-trail-buffer))
-                       (window-parent (get-buffer-window "*Calculator*"))
-                     (get-buffer-window "*Calculator*")))
+    (let* ((calc-win (get-buffer-window (current-buffer)))
+           (anchor (if (get-buffer-window (calc-trail-buffer))
+                       (window-parent calc-win)
+                     calc-win))
            (cols (apply #'max (mapcar #'length calc-help-panel-layout)))
            (width (+ (* cols (1+ calc-help-panel-button-width)) 2))
            (win (split-window anchor (- width) t)))
@@ -174,10 +183,10 @@ Buttons whose command's predicate is non-nil use the active face.")
   :global t
   (if calc-help-panel-mode
       (progn
-        (add-hook 'calc-start-hook #'calc-help-panel--show)
+        (add-hook 'calc-start-hook #'calc-help-panel-show)
         (add-hook 'calc-end-hook #'calc-help-panel--hide)
         (advice-add 'calc-set-mode-line :after #'calc-help-panel--refresh))
-    (remove-hook 'calc-start-hook #'calc-help-panel--show)
+    (remove-hook 'calc-start-hook #'calc-help-panel-show)
     (remove-hook 'calc-end-hook #'calc-help-panel--hide)
     (advice-remove 'calc-set-mode-line #'calc-help-panel--refresh)
     (calc-help-panel--hide)))
